@@ -1,0 +1,131 @@
+---
+title: "NOAA Storm (Human) Harm and (Cost) Consequence"
+author: "Matt Kane"
+date: "July 20, 2018"
+output: html_document
+---
+
+## Synopsis
+
+After analyzing the NOAA storm data from 1950 to November 2011, is is clear that certain types of weather events have a much larger affect on both population health (deaths and injuries) and economic consequences (monetary damages).  Tornados have the most affect across both categories with the largest number of deaths (5,661) and injuries (91,407), while exacting the third largest negative economic impact.  Heat and Flooding are the next biggest events that affect population health (deaths), while Thunderstorm Wind (second most injuries) causes slightly more injuries than Heat.  Flood has the largest negative economic consequences (\$150B), followed by Hurricanes (\$90B), and then Tornados (\$59B).
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("C:/Users/mkane/Documents/GitHub/RepData_PeerAssignment2")
+library(plyr)
+library(ggplot2)
+
+```
+
+## Data Processing (Part 1)
+
+We will retrieve NOAA storm data from 1950 to November 2011 from the following link as our data set for this
+analysis of Storm Harm and Consequence.
+
+https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2
+
+** This Data Processing Part 1this section is seperated from Part 2 for processing time reasons **
+
+```{r GetData, cache=TRUE}
+
+download.file('https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2', 'StormData.bz2')
+storm <- read.csv('StormData.bz2')
+
+```
+## Data Processing (Part 2)
+
+As the NOAA storm data is collected by multiple persons over 61 years, there is some disparity in naming 
+conventions.  In an attempt to clean the data, we have combined duplicative naming.  For example, there are
+weather events named "HURRICANE" and others named "HURRICANE [NAME]", we have combined these into a weather
+event type of just "HURRICANE" for more accurate analysis.
+
+Additionally, we converted the cost analysis/damage assessments to dollars (they were stored in either thousands, millions, or billions) for easy comparison and aggregation.
+
+Finally, we reorganized and aggregated the storms by event type in order to easily compare cost both in terms of affect on humans (deaths and injuries) and damage cost (property and crops).
+
+
+``` {r CleanData}
+
+storm$EVTYPE[grep("HURRICANE*", storm$EVTYPE, ignore.case = TRUE)] <- "HURRICANE"
+storm$EVTYPE[grep("TROPICAL STORM", storm$EVTYPE, ignore.case = TRUE)] <- "TROPICAL STORM"
+storm$EVTYPE[grep("*TORNADO*", storm$EVTYPE, ignore.case = TRUE)] <- "TORNADO"
+storm$EVTYPE[grep("BEACH ER*", storm$EVTYPE, ignore.case = TRUE)] <- "BEACH EROSION"
+storm$EVTYPE[grep("COASTAL FLOOD*", storm$EVTYPE, ignore.case = TRUE)] <- "COASTAL FLOOD"
+storm$EVTYPE[grep("COASTALFLOOD", storm$EVTYPE, ignore.case = TRUE)] <- "COASTAL FLOOD"
+storm$EVTYPE[grep("COASTAL  FLOOD*", storm$EVTYPE, ignore.case = TRUE)] <- "COASTAL FLOOD"
+storm$EVTYPE[grep("COASTAL/TIDAL FLOOD", storm$EVTYPE, ignore.case = TRUE)] <- "COASTAL FLOOD"
+storm$EVTYPE[grep("COASTAL STORM", storm$EVTYPE, ignore.case = TRUE)] <- "COASTAL STORM"
+storm$EVTYPE[grep("COASTALSTORM", storm$EVTYPE, ignore.case = TRUE)] <- "COASTAL STORM"
+storm$EVTYPE[grep("STORM SURGE*", storm$EVTYPE, ignore.case = TRUE)] <- "STORM SURGE"
+storm$EVTYPE[grep("NON.TSTM", storm$EVTYPE, ignore.case = TRUE)] <- "NON-TSTM WIND"
+storm$EVTYPE[grep("TSTM", storm$EVTYPE, ignore.case = TRUE)] <- "THUNDERSTORM WIND"
+storm$EVTYPE[grep("THUNDERSTORM WIND", storm$EVTYPE, ignore.case = TRUE)] <- "THUNDERSTORM WIND"
+storm$EVTYPE[grep("FLASH", storm$EVTYPE, ignore.case = TRUE)] <- "FLASH FLOOD"
+storm$EVTYPE[grep("FIRE", storm$EVTYPE, ignore.case = TRUE)] <- "WILDFIRE"
+storm$EVTYPE[grep("HEAT", storm$EVTYPE, ignore.case = TRUE)] <- "HEAT"
+
+storm$PropertyDamage <- ifelse(storm$PROPDMGEXP == "K", storm$PROPDMG * 1000.0, ifelse(storm$PROPDMGEXP == "M", storm$PROPDMG * 1000000.0, ifelse(storm$PROPDMGEXP == "B", storm$PROPDMG * 1000000000.0, storm$PROPDMG)))
+storm$CropDamage <- ifelse(storm$CROPDMGEXP == "K", storm$CROPDMG * 1000.0, ifelse(storm$CROPDMGEXP == "M", storm$CROPDMG * 1000000.0, ifelse(storm$CROPDMGEXP == "B", storm$CROPDMG * 1000000000.0, storm$CROPDMG)))
+storm$TotalDamage <- storm$PropertyDamage + storm$CropDamage
+
+evtypes <- aggregate(FATALITIES ~ EVTYPE, storm, mean)
+colnames(evtypes)[colnames(evtypes)=="FATALITIES"] <- "MeanFatalities"
+
+evtypes2 <- aggregate(FATALITIES ~ EVTYPE, storm, sum)
+colnames(evtypes2)[colnames(evtypes2)=="FATALITIES"] <- "SumFatalities"
+evtypes <- merge(evtypes, evtypes2)
+
+evtypes2 <- aggregate(INJURIES ~ EVTYPE, storm, mean)
+colnames(evtypes2)[colnames(evtypes2)=="INJURIES"] <- "MeanInjuries"
+evtypes <- merge(evtypes, evtypes2)
+
+evtypes2 <- aggregate(INJURIES ~ EVTYPE, storm, sum)
+colnames(evtypes2)[colnames(evtypes2)=="INJURIES"] <- "SumInjuries"
+evtypes <- merge(evtypes, evtypes2)
+
+evtypes2 <- count(storm, vars = "EVTYPE")
+colnames(evtypes2)[colnames(evtypes2)=="freq"] <- "Count"
+evtypes <- merge(evtypes, evtypes2)
+
+evtypes2 <- aggregate(INJURIES ~ EVTYPE, storm, sum)
+colnames(evtypes2)[colnames(evtypes2)=="INJURIES"] <- "SumInjuries"
+evtypes <- merge(evtypes, evtypes2)
+
+evtypes2 <- aggregate(TotalDamage ~ EVTYPE, storm, sum)
+colnames(evtypes2)[colnames(evtypes2)=="TotalDamage"] <- "SumTotalDamage"
+evtypes <- merge(evtypes, evtypes2)
+
+evtypes2 <- aggregate(TotalDamage ~ EVTYPE, storm, mean)
+colnames(evtypes2)[colnames(evtypes2)=="TotalDamage"] <- "MeanTotalDamage"
+evtypes <- merge(evtypes, evtypes2)
+
+evtypes <- evtypes[order(-evtypes$SumTotalDamage),]
+
+damage <- evtypes[evtypes$SumTotalDamage > 1000000000, c(1, 7)]
+
+evtypes <- evtypes[order(-evtypes$SumFatalities),]
+
+deaths <- evtypes[evtypes$SumFatalities > 100, c(1, 4)]
+
+evtypes <- evtypes[order(-evtypes$SumInjuries),]
+
+injuries <- evtypes[evtypes$SumInjuries > 500, c(1, 2)]
+
+```
+
+## Results
+
+Below are three plots that represent the largest affects on Deaths, Injuries and Economic Damage (in US Dollars) for all weather event types from 1950 to November 2011.  
+
+```{r Results, echo=FALSE}
+
+ggplot(deaths, aes(EVTYPE, SumFatalities)) + geom_bar(position = "dodge", stat = "identity") + coord_flip() + scale_x_discrete(limits=deaths$EVTYPE) + labs(title = "Total Fatalities by Event Type", x = "Event Type", y = "Total Fatalities")
+
+ggplot(injuries, aes(EVTYPE, SumInjuries)) + geom_bar(position = "dodge", stat = "identity") + coord_flip() + scale_x_discrete(limits=injuries$EVTYPE) + labs(title = "Total Injuries by Event Type", x = "Event Type", y = "Total Injuries")
+
+ggplot(damage, aes(EVTYPE, SumTotalDamage)) + geom_bar(position = "dodge", stat = "identity") + coord_flip() + scale_x_discrete(limits=damage$EVTYPE) + labs(title = "Total Damage by Event Type", x = "Event Type", y = "Total Damage")
+
+```
+
+
